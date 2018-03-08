@@ -165,6 +165,75 @@ describe('shared', function() {
     });
   });
 
+  describe('.normalizeRelativePath', () => {
+    it('throws a TypeError when relativePath is not a string', () => {
+      expect(() => shared.normalizeRelativePath(1)).to.throw(TypeError);
+      expect(() => shared.normalizeRelativePath(true)).to.throw(TypeError);
+      expect(() => shared.normalizeRelativePath({})).to.throw(TypeError);
+      expect(() => shared.normalizeRelativePath(undefined)).to.throw(TypeError);
+    });
+
+    it('normalizes an empty path to an empty path', () => {
+      expect(shared.normalizeRelativePath('')).to.equal('');
+    });
+
+    it('normalizes a dot at the beginning of a path', () => {
+      expect(shared.normalizeRelativePath('./foo')).to.equal('foo');
+    });
+
+    it('normalizes a dot at the end of a path', () => {
+      expect(shared.normalizeRelativePath('foo/.')).to.equal('foo');
+    });
+
+    it('normalizes a dot in the middle of a path', () => {
+      expect(shared.normalizeRelativePath('foo/./bar')).to.equal('foo/bar');
+    });
+
+    it('normalizes consecutive dots', () => {
+      expect(shared.normalizeRelativePath('foo/././bar')).to.equal('foo/bar');
+    });
+
+    it('normalizes an empty segment at the beginning of a path', () => {
+      expect(shared.normalizeRelativePath('/foo')).to.equal('foo');
+    });
+
+    it('normalizes an empty segment at the end of a path', () => {
+      expect(shared.normalizeRelativePath('foo/')).to.equal('foo');
+    });
+
+    it('normalizes an empty segment in the middle of a path', () => {
+      expect(shared.normalizeRelativePath('foo//bar')).to.equal('foo/bar');
+    });
+
+    it('normalizes consecutive empty segments', () => {
+      expect(shared.normalizeRelativePath('foo///bar')).to.equal('foo/bar');
+    });
+
+    it('throws an Error when double dot appears at the beginning of a path', () => {
+      expect(() => shared.normalizeRelativePath('..')).to.throw(Error, 'root');
+    });
+
+    it('resolves a double dot at the end of a path', () => {
+      expect(shared.normalizeRelativePath('foo/bar/..')).to.equal('foo');
+    });
+
+    it('resolves a double dot in the middle of a path', () => {
+      expect(shared.normalizeRelativePath('foo/../bar')).to.equal('bar');
+    });
+
+    it('resolves consecutive double dots', () => {
+      expect(shared.normalizeRelativePath('foo/bar/../../baz')).to.equal('baz');
+    });
+
+    it('throws an Error when double dots are used to escape the root', () => {
+      expect(() => shared.normalizeRelativePath('foo/../../bar')).to.throw(Error, 'root');
+    });
+
+    it('normalizes to an empty path if all path segments are removed', function() {
+      expect(shared.normalizeRelativePath('./foo/../bar//baz/.././../')).to.equal('');
+    });
+  });
+
   describe('.searchByRelativePath', () => {
     function expectResult(haystack, needle, expected, closest) {
       const entries = haystack.map(Entry.fromPath);
