@@ -56,8 +56,8 @@ function sanitizeEntry(entry) {
 }
 
 /** Sanitize a path by removing trailing slash, if present. */
-function sanitizePath(path) {
-  return path.replace(/\/$/, '');
+function sanitizePath(path_) {
+  return path_.replace(/\/$/, '');
 }
 
 /** Sanitize an array of paths using sanitizePath. */
