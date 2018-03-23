@@ -20,6 +20,46 @@ const treeFromDisk = helpers.treeFromDisk;
 
 require('chai').config.truncateThreshold = 0;
 
+/** Convert an array of changes into the structures used by WritableTree.
+ *
+ * The changes are sanitized prior to conversion.
+ *
+ * @param {WritableTree} tree The tree which will contain the changes.
+ * @param {Change[]} changes The array of changes to convert.
+ */
+function compileChanges(tree, changes) {
+  const sanitized = sanitizeChanges(changes);
+
+  let previous = undefined;
+
+  tree._firstChange = sanitized[0];
+  tree._lastChange = sanitized[sanitized.length - 1];
+
+  tree._changeHash = sanitized.reduce((hash, change) => {
+    if (previous) {
+      previous[4] = change;
+    }
+
+    change[3] = previous;
+    previous = change;
+
+    hash[change[0]][change[1]] = change;
+
+    return hash;
+  }, {
+    change: {},
+    create: {},
+    mkdir: {},
+    rmdir: {},
+    unlink: {},
+  });
+
+  if (tree._lastChange) {
+    // Otherwise, there will only be 4 elements.
+    tree._lastChange[4] = undefined;
+  }
+}
+
 /** Convert an array of changes into simpler, more comparable objects.
  *
  * Sanitizes paths and entries using sanitizePath and sanitizeEntry.
@@ -44,15 +84,12 @@ function sanitizeEntries(entries) {
   return entries.map(sanitizeEntry);
 }
 
-/** Reduces an entry to a simpler, more comparable object.
+/** Reduces an entry to a simpler, more comparable form.
  *
  * Only mode and relativePath are retained, both sanitized.
  */
 function sanitizeEntry(entry) {
-  return {
-    mode: sanitizeMode(entry.mode),
-    relativePath: sanitizePath(entry.relativePath),
-  };
+  return new Entry(sanitizePath(entry.relativePath), undefined, 0, sanitizeMode(entry.mode));
 }
 
 /** Sanitize a path by removing trailing slash, if present. */
@@ -436,11 +473,11 @@ describe('fs abstraction', () => {
       });
 
       it('tracks a change', () => {
-        expect(tree._changes).to.deep.equal([]);
+        expect(tree.changes()).to.deep.equal([]);
 
         tree.writeFileSync('new-file.txt', 'new file');
 
-        expect(sanitizeChanges(tree._changes)).to.deep.equal(sanitizeChanges([
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
           ['create', 'new-file.txt'],
         ]));
       });
@@ -679,9 +716,11 @@ describe('fs abstraction', () => {
       });
 
       it('tracks a change', () => {
+        expect(tree.changes()).to.deep.equal([]);
+
         tree.symlinkSync(path.join(tree.root, 'hello.txt'), 'my-link');
 
-        expect(sanitizeChanges(tree._changes)).to.deep.equal(sanitizeChanges([
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
           ['create', 'my-link'],
         ]));
       });
@@ -721,11 +760,11 @@ describe('fs abstraction', () => {
       });
 
       it('tracks a change', () => {
-        expect(tree._changes).to.deep.equal([]);
+        expect(tree.changes()).to.deep.equal([]);
 
         tree.unlinkSync('hello.txt');
 
-        expect(sanitizeChanges(tree._changes)).to.deep.equal(sanitizeChanges([
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
           ['unlink', 'hello.txt'],
         ]));
       });
@@ -788,11 +827,11 @@ describe('fs abstraction', () => {
       });
 
       it('tracks a change', () => {
-        expect(tree._changes).to.deep.equal([]);
+        expect(tree.changes()).to.deep.equal([]);
 
         tree.rmdirSync('my-directory');
 
-        expect(sanitizeChanges(tree._changes)).to.deep.equal(sanitizeChanges([
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
           ['rmdir', 'my-directory'],
         ]));
       });
@@ -914,11 +953,11 @@ describe('fs abstraction', () => {
       });
 
       it('tracks a change', () => {
-        expect(tree._changes).to.deep.equal([]);
+        expect(tree.changes()).to.deep.equal([]);
 
         tree.mkdirSync('new-directory');
 
-        expect(sanitizeChanges(tree._changes)).to.deep.equal(sanitizeChanges([
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
           ['mkdir', 'new-directory'],
         ]));
       });
@@ -1656,157 +1695,174 @@ describe('fs abstraction', () => {
 
   describe('WritableTree', () => {
     describe('._track', () => {
-      it('tracks a change', () => {
-        tree._track('foo', { relativePath: 'bar' });
+      // Note that sanitizeEntry, sanitizeChanges, etc. MUST NOT be used here;
+      // they will strip out the meta property used to distinguish entries.
 
-        expect(tree._changes).to.deep.equal([
-          [ 'foo', 'bar', { relativePath: 'bar' }],
+      let directoryEntry1;
+      let directoryEntry2;
+      let fileEntry1;
+      let fileEntry2;
+
+      beforeEach(() => {
+        directoryEntry1 = directory('foo', { meta: 1 });
+        directoryEntry2 = directory('foo', { meta: 2 });
+        fileEntry1 = file('foo', { meta: 1 });
+        fileEntry2 = file('foo', { meta: 2 });
+      });
+
+      it('tracks a change', () => {
+        tree._track('create', fileEntry1);
+
+        expect(tree.changes()).to.deep.equal([
+          [ 'create', 'foo', fileEntry1 ],
         ]);
       });
 
       it('removes a previous unlink when tracking a create', () => {
-        tree._track('unlink', { relativePath: 'foo' });
-        tree._track('create', { relativePath: 'foo' });
+        tree._track('unlink', fileEntry1);
+        tree._track('create', fileEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'unlink', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'unlink', 'foo', fileEntry1]);
       });
 
       it('tracks a change instead of a create when a previous unlink exists', () => {
-        tree._track('unlink', { relativePath: 'foo' });
-        tree._track('create', { relativePath: 'foo' });
+        tree._track('unlink', fileEntry1);
+        tree._track('create', fileEntry2);
 
-        expect(tree._changes).to.deep.include([ 'change', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.include([ 'change', 'foo', fileEntry2]);
       });
 
       it('removes a previous change when tracking a change', () => {
-        tree._track('change', { relativePath: 'foo', id: 0 });
-        tree._track('change', { relativePath: 'foo', id: 1 });
+        tree._track('change', fileEntry1);
+        tree._track('change', fileEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'change', 'foo', { relativePath: 'foo', id: 0 }]);
+        expect(tree.changes()).to.deep.not.include([ 'change', 'foo', fileEntry1]);
       });
 
       it('removes a previous create when tracking a change', () => {
         // Uses IDs to differentiate because the change should also become a
         // create.  (See next test.)
-        tree._track('create', { relativePath: 'foo', id: 0 });
-        tree._track('change', { relativePath: 'foo', id: 1 });
+        tree._track('create', fileEntry1);
+        tree._track('change', fileEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'create', 'foo', { relativePath: 'foo', id: 0 }]);
+        expect(tree.changes()).to.deep.not.include([ 'create', 'foo', fileEntry1]);
       });
 
       it('tracks a create instead of a change when a previous create exists', () => {
-        tree._track('create', { relativePath: 'foo', id: 0 });
-        tree._track('change', { relativePath: 'foo', id: 1 });
+        tree._track('create', fileEntry1);
+        tree._track('change', fileEntry2);
 
-        expect(tree._changes).to.deep.include([ 'create', 'foo', { relativePath: 'foo', id: 1 }]);
+        expect(tree.changes()).to.deep.include([ 'create', 'foo', fileEntry2]);
       });
 
       it('removes a previous rmdir when tracking a mkdir', () => {
-        tree._track('rmdir', { relativePath: 'foo' });
-        tree._track('mkdir', { relativePath: 'foo' });
+        tree._track('rmdir', directoryEntry1);
+        tree._track('mkdir', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'rmdir', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'rmdir', 'foo', directoryEntry1]);
       });
 
       it('does not track a mkdir when a previous rmdir exists', () => {
-        tree._track('rmdir', { relativePath: 'foo' });
-        tree._track('mkdir', { relativePath: 'foo' });
+        tree._track('rmdir', directoryEntry1);
+        tree._track('mkdir', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'mkdir', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'mkdir', 'foo', directoryEntry2]);
       });
 
       it('removes a previous mkdir when tracking a rmdir', () => {
-        tree._track('mkdir', { relativePath: 'foo' });
-        tree._track('rmdir', { relativePath: 'foo' });
+        tree._track('mkdir', directoryEntry1);
+        tree._track('rmdir', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'mkdir', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'mkdir', 'foo', directoryEntry1]);
       });
 
       it('does not track a rmdir when a previous mkdir exists', () => {
-        tree._track('mkdir', { relativePath: 'foo' });
-        tree._track('rmdir', { relativePath: 'foo' });
+        tree._track('mkdir', directoryEntry1);
+        tree._track('rmdir', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'rmdir', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'rmdir', 'foo', directoryEntry2]);
       });
 
       it('removes a previous change when tracking an unlink', () => {
-        tree._track('change', { relativePath: 'foo' });
-        tree._track('unlink', { relativePath: 'foo' });
+        tree._track('change', directoryEntry1);
+        tree._track('unlink', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'change', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'change', 'foo', directoryEntry1]);
       });
 
       it('removes a previous create when tracking an unlink', () => {
-        tree._track('create', { relativePath: 'foo' });
-        tree._track('unlink', { relativePath: 'foo' });
+        tree._track('create', directoryEntry1);
+        tree._track('unlink', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'create', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'create', 'foo', directoryEntry1]);
       });
 
       it('does not track an unlink when a previous create exists', () => {
-        tree._track('create', { relativePath: 'foo' });
-        tree._track('unlink', { relativePath: 'foo' });
+        tree._track('create', directoryEntry1);
+        tree._track('unlink', directoryEntry2);
 
-        expect(tree._changes).to.deep.not.include([ 'unlink', 'foo', { relativePath: 'foo' }]);
+        expect(tree.changes()).to.deep.not.include([ 'unlink', 'foo', directoryEntry2]);
       });
     });
 
     describe('._untrack', () => {
       it('removes one matching changes', () => {
-        tree._changes = [
-          [ 'foo', 'bar', 'unused' ],
-          [ 'foo', 'bar', 'also unused' ],
-        ];
-
-        tree._untrack('foo', 'bar');
-
-        expect(tree._changes).to.deep.equal([
-          [ 'foo', 'bar', 'also unused' ],
+        compileChanges(tree, [
+          [ 'create', 'foo' ],
+          [ 'create', 'bar' ],
         ]);
+
+        tree._untrack('create', 'foo');
+
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
+          [ 'create', 'bar' ],
+        ]));
       });
 
       it('does not remove changes for which the operation does not match', () => {
-        tree._changes = [
-          [ 'foo', 'bar', 'unused' ],
-          [ 'foo', 'bar', 'also unused' ],
-        ];
-
-        tree._untrack('doesn\'t match', 'bar');
-
-        expect(tree._changes).to.deep.equal([
-          [ 'foo', 'bar', 'unused' ],
-          [ 'foo', 'bar', 'also unused' ],
+        compileChanges(tree, [
+          [ 'create', 'foo' ],
+          [ 'create', 'bar' ],
         ]);
+
+        tree._untrack('unlink', 'foo');
+
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
+          // WritableTree#changes() sorts its ouput.
+          [ 'create', 'bar' ],
+          [ 'create', 'foo' ],
+        ]));
       });
 
       it('does not remove changes for which the path does not match', () => {
-        tree._changes = [
-          [ 'foo', 'bar', 'unused' ],
-          [ 'foo', 'bar', 'also unused' ],
-        ];
-
-        tree._untrack('foo', 'doesn\'t match');
-
-        expect(tree._changes).to.deep.equal([
-          [ 'foo', 'bar', 'unused' ],
-          [ 'foo', 'bar', 'also unused' ],
+        compileChanges(tree, [
+          [ 'create', 'foo' ],
+          [ 'create', 'bar' ],
         ]);
+
+        tree._untrack('create', 'baz');
+
+        expect(sanitizeChanges(tree.changes())).to.deep.equal(sanitizeChanges([
+          // WritableTree#changes() sorts its ouput.
+          [ 'create', 'bar' ],
+          [ 'create', 'foo' ],
+        ]));
       });
 
       it('returns true if matches were found and removed', () => {
-        tree._changes = [
-          [ 'foo', 'bar', 'unused' ],
-        ];
+        compileChanges(tree, [
+          [ 'create', 'foo' ],
+        ]);
 
-        expect(tree._untrack('foo', 'bar')).to.be.true;
+        expect(tree._untrack('create', 'foo')).to.be.true;
       });
 
       it('returns false if no matches were found or removed', () => {
-        tree._changes = [
-          [ 'foo', 'bar', 'unused' ],
-        ];
+        compileChanges(tree, [
+          [ 'create', 'foo' ],
+        ]);
 
-        expect(tree._untrack('doesn\'t match', 'doesn\'t match')).to.be.false;
+        expect(tree._untrack('unlink', 'bar')).to.be.false;
       });
     });
   });
