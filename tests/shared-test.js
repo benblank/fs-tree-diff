@@ -294,7 +294,6 @@ describe('shared', function() {
       });
 
       it('returns the previous index for a target missing from the array', () => {
-        debugger;
         expectResult(letters, 'e/js', 4, true);
       });
     });
