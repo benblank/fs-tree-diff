@@ -1819,6 +1819,17 @@ describe('fs abstraction', () => {
         ]));
       });
 
+      it('removes the tracked change from the hash', () => {
+        compileChanges(tree, [
+          [ 'create', 'foo' ],
+          [ 'create', 'bar' ],
+        ]);
+
+        tree._untrack('create', 'foo');
+
+        expect(tree._changeHash.create.foo).to.be.undefined;
+      });
+
       it('does not remove changes for which the operation does not match', () => {
         compileChanges(tree, [
           [ 'create', 'foo' ],
