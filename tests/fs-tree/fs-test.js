@@ -305,17 +305,6 @@ describe('fs abstraction', () => {
         });
       });
 
-      it('directory with trailing slash', () => {
-        const result = tree._findByRelativePath('my-directory/');
-        const entry = result.entry;
-
-        expect(entry).to.not.be.null;
-        expect(entry).to.have.property('relativePath', 'my-directory');
-        expect(entry).to.have.property('mode');
-        expect(entry).to.have.property('size');
-        expect(entry).to.have.property('mtime');
-      });
-
       it('directory without trailing slash', () => {
         let result = tree._findByRelativePath('my-directory');
         let entry = result.entry;
@@ -335,12 +324,6 @@ describe('fs abstraction', () => {
         expect(result.entry).to.equal(Entry.ROOT);
       });
 
-      it('normalizes paths', () => {
-        expect(tree._findByRelativePath('my-directory/').entry).to.not.be.null;
-        expect(tree._findByRelativePath('my-directory/.').entry).to.not.be.null;
-        expect(tree._findByRelativePath('my-directory/foo/..').entry).to.not.be.null;
-      });
-
       it('get entry for file from symlinks', () => {
         tree.mkdirSync('my-directory/bar');
         tree.writeFileSync('my-directory/bar/baz', 'hello');
@@ -350,10 +333,10 @@ describe('fs abstraction', () => {
       });
 
       it('get entry for a directory from symlinks', () => {
-        tree.mkdirpSync('my-directory/bar/baz/');
+        tree.mkdirpSync('my-directory/bar/baz');
         tree2.symlinkToFacadeSync(tree, 'my-directory', 'b')
 
-        expect(tree2._findByRelativePath('b/bar/baz/').entry).to.not.be.null;
+        expect(tree2._findByRelativePath('b/bar/baz').entry).to.not.be.null;
       });
 
       it('get entry for a file missing in symlinks', () => {
@@ -1105,20 +1088,6 @@ describe('fs abstraction', () => {
 
       it('resolves paths with ..', () => {
         expect(tree._resolvePath('my-directory/uwot/../..')).to.equal(ROOT);
-      });
-
-      it('throws for paths that escape root', () => {
-        expect(() => {
-          tree._resolvePath('..');
-        }).to.throw('Invalid path: \'..\' not within root.');
-      });
-
-      it('throws for paths within a chdir that escape root', () => {
-        const projection = tree.chdir('my-directory');
-
-        expect(() => {
-          projection._resolvePath('..');
-        }).to.throw('Invalid path: \'..\' not within root.');
       });
     });
 
