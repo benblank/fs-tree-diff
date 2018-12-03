@@ -361,6 +361,15 @@ describe('fs abstraction', () => {
 
         expect(tree2._findByRelativePath('abc/my-directory').entry).to.not.be.null;
       });
+
+      it('crosses symlinks which don\'t immediately precede their target', () => {
+        tree.mkdirSync('my-directory/bar');
+        tree.writeFileSync('my-directory/bar/baz', 'hello');
+        tree2.symlinkToFacadeSync(tree, 'my-directory', 'b')
+        tree2.writeFileSync('b.fakeout', 'goodbye');
+
+        expect(tree2._findByRelativePath('b/bar/baz').entry).to.not.be.null;
+      });
     });
 
     it('does not allow non-absolute paths', () => {
