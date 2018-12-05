@@ -100,6 +100,27 @@ describe('shared', function() {
         new Entry('a/b/q/r/bar.js', undefined, 0, Entry.FILE_MODE),
       ]);
     });
+
+    it('deduplicates', function() {
+      const entries = [
+        'b.js',
+        'b.js',
+        'd.js',
+        'c',
+        'd.js',
+        'b.js',
+        'a',
+      ].map((path_) => Entry.fromPath(path_));
+
+      const sortedAndExpandedEntries = sortAndExpand(entries);
+
+      expect(sortedAndExpandedEntries.map((entry) => entry.relativePath)).to.deep.equal([
+        'a',
+        'b.js',
+        'c',
+        'd.js',
+      ]);
+    });
   });
 
   describe('.entryRelativePath', function() {
