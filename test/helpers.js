@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const walkSync = require('walk-sync');
 
-const fstree = require('../lib');
+const fstree = require('..');
 const Entry = require('../lib/entry');
 
 const RANDOM_ROOT_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
