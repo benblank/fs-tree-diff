@@ -4,7 +4,6 @@ const expect = require('chai').expect;
 const fixturify = require('fixturify');
 const fs = require('fs-extra');
 const path = require('path');
-const rimraf = require('rimraf');
 
 const fstree = require('../');
 const FSMergeTree = require('../lib/fs-merge-tree');
@@ -69,8 +68,7 @@ describe('FSMergeTree', function () {
   const ROOT = path.resolve('tmp/fs-test-root/');
 
   beforeEach(function () {
-    rimraf.sync(ROOT);
-
+    fs.removeSync(ROOT);
     fs.mkdirpSync(ROOT);
   });
 
