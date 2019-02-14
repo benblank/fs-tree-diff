@@ -4,13 +4,13 @@ const chai = require('chai');
 const fixturify = require('fixturify');
 const fs = require('fs-extra');
 const fstree = require('../lib');
-const os = require('os');
 const path = require('path');
 const sinon = require('sinon');
 const sinonChai = require('sinon-chai');
 
 const Entry = require('../lib/entry');
 const { compareChanges } = require('../lib/shared');
+const { ROOT_CONTAINER, getTempRoot, sourceTreeFromFixture, writableTreeFromFixture } = require('./helpers');
 const verifyChanges = require('./verify-changes');
 
 const { expect } = chai;
@@ -35,10 +35,6 @@ const FIXTURE = {
     },
   },
 };
-
-const RANDOM_ROOT_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
-const RANDOM_ROOT_LENGTH = 6;
-const ROOT_CONTAINER = `${path.resolve(os.tmpdir())}/fs-tree-diff-test-roots`;
 
 function directory(relativePath) {
   return new Entry(relativePath, undefined, 0, Entry.DIRECTORY_MODE);
@@ -102,17 +98,6 @@ function entriesFromFixture(fixture) {
   return changesFromFixture(fixture).map((change) => change[2]);
 }
 
-/** Get a randomly-named path for use as a tree root. */
-function getTempRoot() {
-  const randomChars = [];
-
-  for (let i = 0; i < RANDOM_ROOT_LENGTH; i++) {
-    randomChars.push(RANDOM_ROOT_CHARS[Math.floor(Math.random() * RANDOM_ROOT_CHARS.length)]);
-  }
-
-  return path.join(ROOT_CONTAINER, randomChars.join(''));
-}
-
 /** Given a fixture, compute the paths it represents. */
 function pathsFromFixture(fixture) {
   return entriesFromFixture(fixture).map((entry) => entry.relativePath);
@@ -169,53 +154,6 @@ function sanitizeMode(mode) {
  */
 function sortChanges(changes) {
   return changes.sort(compareChanges);
-}
-
-/** Create a SourceTree pointing at the specified fixture. */
-function sourceTreeFromFixture(fixture) {
-  const root = getTempRoot();
-
-  fixturify.writeSync(root, fixture);
-
-  return new fstree.SourceTree({ root });
-}
-
-/** Create a WritableTree pre-populated from the specified fixture. */
-function writableTreeFromFixture(fixture) {
-  const root = getTempRoot();
-
-  fs.mkdirpSync(root);
-
-  const tree = new fstree.WritableTree({ root });
-
-  tree.start();
-
-  function createDirectory(path_, fixture) {
-    for (const [ name, contents ] of Object.entries(fixture)) {
-      if (!name) {
-        throw new Error('name must be a non-empty string');
-      }
-
-      if (/^\.\.?$/.test(name)) {
-        throw new Error('name cannot be . or ..');
-      }
-
-      if (/\/|\\/.test(name)) {
-        throw new Error(`name cannot contain slashes: ${name}`)
-      }
-
-      if (typeof contents === 'object') {
-        tree.mkdirSync(path.join(...path_, name));
-        createDirectory([...path_, name], contents);
-      } else {
-        tree.writeFileSync(path.join(...path_, name), contents);
-      }
-    }
-  }
-
-  createDirectory([], fixture);
-
-  return tree;
 }
 
 describe('fsFacade', function() {
@@ -1301,7 +1239,6 @@ describe('fsFacade', function() {
       });
 
       it('can change the root', function() {
-        const oldRoot = tree.root;
         const newRoot = getTempRoot();
 
         expect(tree.paths).to.deep.equal(pathsFromFixture(FIXTURE));

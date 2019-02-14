@@ -1,12 +1,19 @@
 'use strict';
 
+const fixturify = require('fixturify');
 const fs = require('fs-extra');
 const md5hex = require('md5hex');
+const os = require('os');
 const path = require('path');
 const walkSync = require('walk-sync');
 
 const fstree = require('../lib');
 const Entry = require('../lib/entry');
+
+const RANDOM_ROOT_CHARS = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const RANDOM_ROOT_LENGTH = 6;
+
+module.exports.ROOT_CONTAINER = `${path.resolve(os.tmpdir())}/fs-tree-diff-test-roots`;
 
 class EntryWithMeta extends Entry {
   constructor(options) {
@@ -50,81 +57,60 @@ module.exports.file = function(relativePath, options) {
   }, options));
 };
 
-/** Creates a FacadeTree and manually populates its entries.
- *
- * HACK: This function, and most tests, were created before the entires + root
- * combination was disallowed, so this function hacks around that limitation.
- * Real trees are *not* composed this way, and so all tests relying on this
- * behavior need to re-written to use more realistic trees.  See FPE-495.
- */
-module.exports.treeFromDisk = function(root, Tree_) {
-  const Tree = Tree_ || fstree.WritableTree;
+/** Get a randomly-named path for use as a tree root. */
+module.exports.getTempRoot = function() {
+  const randomChars = [];
 
-  if (Tree !== fstree.SourceTree && Tree !== fstree.WritableTree) {
-    throw new TypeError('This helper only supports SourceTrees and WritableTrees.');
+  for (let i = 0; i < RANDOM_ROOT_LENGTH; i++) {
+    randomChars.push(RANDOM_ROOT_CHARS[Math.floor(Math.random() * RANDOM_ROOT_CHARS.length)]);
   }
 
-  const tree = new Tree({ root });
+  return path.join(module.exports.ROOT_CONTAINER, randomChars.join(''));
+}
 
-  // Populate the private property containing the scanned/created entries.
-  tree._entries = walkSync.entries(root);
+/** Create a SourceTree pointing at the specified fixture. */
+module.exports.sourceTreeFromFixture = function(fixture) {
+  const root = module.exports.getTempRoot();
 
-  if (tree instanceof fstree.SourceTree) {
-    // Source trees elide broken symlinks.
-    tree._entries = tree._entries.filter(entry => entry.mode !== undefined);
-  } else {
-    // Convert scanned symlinks to external links.
-    tree._entries.forEach(entry => {
-      try {
-        entry._symlink = { external: fs.readlinkSync(path.join(root, entry.relativePath)) };
-      } catch (ex) {
-        // EINVAL is thrown if it wasn't a link.
-        if (!/^EINVAL\b/.test(ex.message)) {
-          throw ex;
-        }
+  fixturify.writeSync(root, fixture);
+
+  return new fstree.SourceTree({ root });
+}
+
+/** Create a WritableTree pre-populated from the specified fixture. */
+module.exports.writableTreeFromFixture = function(fixture) {
+  const root = module.exports.getTempRoot();
+
+  fs.mkdirpSync(root);
+
+  const tree = new fstree.WritableTree({ root });
+
+  tree.start();
+
+  function createDirectory(path_, fixture) {
+    for (const [ name, contents ] of Object.entries(fixture)) {
+      if (!name) {
+        throw new Error('name must be a non-empty string');
       }
-    });
+
+      if (/^\.\.?$/.test(name)) {
+        throw new Error('name cannot be . or ..');
+      }
+
+      if (/\/|\\/.test(name)) {
+        throw new Error(`name cannot contain slashes: ${name}`)
+      }
+
+      if (typeof contents === 'object') {
+        tree.mkdirSync(path.join(...path_, name));
+        createDirectory([...path_, name], contents);
+      } else {
+        tree.writeFileSync(path.join(...path_, name), contents);
+      }
+    }
   }
 
-  tree._entries = tree._entries.map(entry => {
-    // Convert to real Entry objects so that .isDirectory, .isSymbolicLink,
-    // etc. work.  Automatically strips trailing slashes.
-    return new Entry(entry.relativePath, entry.size, entry.mtime, entry.mode);
-  });
-
-  // walk-sync sorts with trailing slashes on directories; we must re-sort now
-  // that they've been trimmed.
-  tree._entries.sort((a, b) => {
-    if (a.relativePath < b.relativePath) {
-      return -1;
-    }
-
-    if (b.relativePath < a.relativePath) {
-      return 1;
-    }
-
-    return 0;
-  });
-
-  if (tree instanceof fstree.SourceTree) {
-    // Source trees track which directories have been scanned; populate that as well.
-    const directories = tree._entries.filter(entry => entry.isDirectory());
-    const paths = directories.map(entry => entry.relativePath);
-
-    paths.forEach(path_ => tree._scannedDirectories.add(path_));
-  } else {
-    // Writable trees will only contain files they wrote; in other words, the
-    // checksum will always be present.
-    tree._entries.filter(entry => entry.isFile()).forEach(entry => {
-      const content = fs.readFileSync(path.join(tree.root, entry.relativePath));
-      const checksum = md5hex('' + content);
-
-      entry.checksum = checksum;
-    });
-
-    // Writable trees must be started before writing.
-    tree.start();
-  }
+  createDirectory([], fixture);
 
   return tree;
-};
+}

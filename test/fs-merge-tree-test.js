@@ -5,9 +5,9 @@ const fixturify = require('fixturify');
 const fs = require('fs-extra');
 const path = require('path');
 
-const fstree = require('../');
+const fstree = require('..');
 const FSMergeTree = require('../lib/fs-merge-tree');
-const treeFromDisk = require('./helpers').treeFromDisk;
+const { getTempRoot, writableTreeFromFixture } = require('./helpers');
 
 function mapBy(array, property) {
   return array.map(function (item) {
@@ -65,12 +65,7 @@ function applyChanges(changes, outTree) {
 }
 
 describe('FSMergeTree', function () {
-  const ROOT = path.resolve('tmp/fs-test-root/');
-
-  beforeEach(function () {
-    fs.removeSync(ROOT);
-    fs.mkdirpSync(ROOT);
-  });
+  const ROOT = getTempRoot();
 
   afterEach(function () {
     fs.removeSync(ROOT);
@@ -295,27 +290,23 @@ describe('FSMergeTree', function () {
 
   describe('changes', function () {
     it('merges directories with same name with one symlinked directory', function () {
-      fixturify.writeSync(ROOT, {
-        source: {
-          index: {
-            abc: 'abc',
-            def: 'def',
-          },
+      const sourceTree = writableTreeFromFixture({
+        index: {
+          abc: 'abc',
+          def: 'def',
         },
-        in1: {},
-        in2: {
-          index: {
-            ghi: 'ghi',
-            jkl: 'jkl',
-          },
-        },
-        out: {},
       });
 
-      const sourceTree = treeFromDisk(path.join(ROOT, 'source'));
-      const inTree1 = treeFromDisk(path.join(ROOT, 'in1'));
-      const inTree2 = treeFromDisk(path.join(ROOT, 'in2'));
-      const outTree = treeFromDisk(path.join(ROOT, 'out'));
+      const inTree1 = writableTreeFromFixture({});
+
+      const inTree2 = writableTreeFromFixture({
+        index: {
+          ghi: 'ghi',
+          jkl: 'jkl',
+        },
+      });
+
+      const outTree = writableTreeFromFixture({});
 
       // On one side, index is a symlink.
       inTree1.symlinkToFacadeSync(sourceTree, 'index', 'index');
@@ -327,7 +318,7 @@ describe('FSMergeTree', function () {
       // Applying the changes in disk
       applyChanges(mergedTree.changes(null), outTree);
 
-      expect(fixturify.readSync(`${ROOT}/out`)).to.deep.equal({
+      expect(fixturify.readSync(outTree.root)).to.deep.equal({
         index: {
           abc: 'abc',
           def: 'def',
@@ -338,29 +329,23 @@ describe('FSMergeTree', function () {
     });
 
     it('merges directories with same name with both symlinked directory', function () {
-      fixturify.writeSync(ROOT, {
-        source1: {
-          index: {
-            abc: 'abc',
-            def: 'def',
-          },
+      const sourceTree1 = writableTreeFromFixture({
+        index: {
+          abc: 'abc',
+          def: 'def',
         },
-        source2: {
-          index: {
-            ghi: 'ghi',
-            jkl: 'jkl',
-          },
-        },
-        in1: {},
-        in2: {},
-        out: {},
       });
 
-      const sourceTree1 = treeFromDisk(path.join(ROOT, 'source1'));
-      const sourceTree2 = treeFromDisk(path.join(ROOT, 'source2'));
-      const inTree1 = treeFromDisk(path.join(ROOT, 'in1'));
-      const inTree2 = treeFromDisk(path.join(ROOT, 'in2'));
-      const outTree = treeFromDisk(path.join(ROOT, 'out'));
+      const sourceTree2 = writableTreeFromFixture({
+        index: {
+          ghi: 'ghi',
+          jkl: 'jkl',
+        },
+      });
+
+      const inTree1 = writableTreeFromFixture({});
+      const inTree2 = writableTreeFromFixture({});
+      const outTree = writableTreeFromFixture({});
 
       // On both sides, index is a symlink.
       inTree1.symlinkToFacadeSync(sourceTree1, 'index', 'index');
@@ -373,7 +358,7 @@ describe('FSMergeTree', function () {
       // Applying the changes in disk
       applyChanges(mergedTree.changes(null), outTree);
 
-      expect(fixturify.readSync(`${ROOT}/out`)).to.deep.equal({
+      expect(fixturify.readSync(outTree.root)).to.deep.equal({
         index: {
           abc: 'abc',
           def: 'def',
@@ -398,12 +383,11 @@ describe('FSMergeTree', function () {
             jkl: 'jkl',
           },
         },
-        out: {},
       });
 
       fs.symlinkSync(path.join(ROOT, 'source', 'index'), path.join(ROOT, 'in1', 'index'));
 
-      const outTree = treeFromDisk(path.join(ROOT, 'out'));
+      const outTree = writableTreeFromFixture({});
 
       const mergedTree = new FSMergeTree({
         inputs: [path.join(ROOT, 'in1'), path.join(ROOT, 'in2')],
@@ -412,7 +396,7 @@ describe('FSMergeTree', function () {
       // Applying the changes in disk
       applyChanges(mergedTree.changes(null), outTree);
 
-      expect(fixturify.readSync(`${ROOT}/out`)).to.deep.equal({
+      expect(fixturify.readSync(outTree.root)).to.deep.equal({
         index: {
           abc: 'abc',
           def: 'def',
@@ -423,18 +407,14 @@ describe('FSMergeTree', function () {
     });
 
     it('doesn\'t expand changes for symlinks with linkDir=true', () => {
-      fixturify.writeSync(ROOT, {
-        source: {
-          index: {
-            abc: 'abc',
-            def: 'def',
-          },
+      const sourceTree = writableTreeFromFixture({
+        index: {
+          abc: 'abc',
+          def: 'def',
         },
-        in: {},
       });
 
-      const sourceTree = treeFromDisk(path.join(ROOT, 'source'));
-      const inTree = treeFromDisk(path.join(ROOT, 'in'));
+      const inTree = writableTreeFromFixture({});
 
       inTree.symlinkToFacadeSync(sourceTree, 'index', 'index');
 
@@ -452,17 +432,13 @@ describe('FSMergeTree', function () {
     });
 
     it('handles linkDir changing between one call and the next', () => {
-      fixturify.writeSync(ROOT, {
-        in1: {
-          foo: {
-            bar: 'bar',
-          },
+      const inTree1 = writableTreeFromFixture({
+        foo: {
+          bar: 'bar',
         },
-        in2: {},
       });
 
-      const inTree1 = treeFromDisk(path.join(ROOT, 'in1'));
-      const inTree2 = treeFromDisk(path.join(ROOT, 'in2'));
+      const inTree2 = writableTreeFromFixture({});
 
       const mergedTree = new FSMergeTree({
         inputs: [inTree1, inTree2],
