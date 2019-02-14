@@ -7,7 +7,7 @@ const path = require('path');
 
 const fstree = require('../');
 const FSMergeTree = require('../lib/fs-merge-tree');
-const treeFromDisk = require('./fs-tree/helpers').treeFromDisk;
+const treeFromDisk = require('./helpers').treeFromDisk;
 
 function mapBy(array, property) {
   return array.map(function (item) {

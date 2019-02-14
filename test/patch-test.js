@@ -4,7 +4,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const expect = require('chai').expect;
 const walkSync = require('walk-sync');
-const fstree = require('../../lib/index');
+const fstree = require('../lib/index');
 const context = describe;
 const defaultIsEqual = fstree.ManualTree.defaultIsEqual;
 

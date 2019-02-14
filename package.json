@@ -7,8 +7,9 @@
     "lib"
   ],
   "scripts": {
-    "test": "mocha --recursive tests/",
-    "test:debug": "mocha --recursive debug tests/"
+    "coverage": "nyc --reporter=html mocha",
+    "test": "mocha",
+    "test:debug": "mocha debug"
   },
   "keywords": [
     "broccoli"
@@ -32,6 +33,7 @@
     "fs-extra": "^1.0.0",
     "md5sum": "^0.9.0",
     "mocha": "^2.3.3",
+    "nyc": "^13.2.0",
     "promise-map-series": "^0.2.3",
     "rsvp": "^3.2.1",
     "sinon": "^2.3.6",

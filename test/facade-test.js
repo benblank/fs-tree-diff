@@ -3,15 +3,15 @@
 const chai = require('chai');
 const fixturify = require('fixturify');
 const fs = require('fs-extra');
-const fstree = require('../../lib');
+const fstree = require('../lib');
 const os = require('os');
 const path = require('path');
 const sinon = require('sinon');
 const sinonChai = require('sinon-chai');
 
-const Entry = require('../../lib/entry');
-const { compareChanges } = require('../../lib/shared');
-const verifyChanges = require('../verify-changes');
+const Entry = require('../lib/entry');
+const { compareChanges } = require('../lib/shared');
+const verifyChanges = require('./verify-changes');
 
 const { expect } = chai;
 

@@ -5,8 +5,8 @@ const md5hex = require('md5hex');
 const path = require('path');
 const walkSync = require('walk-sync');
 
-const fstree = require('../../lib');
-const Entry = require('../../lib/entry');
+const fstree = require('../lib');
+const Entry = require('../lib/entry');
 
 class EntryWithMeta extends Entry {
   constructor(options) {

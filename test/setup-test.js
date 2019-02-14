@@ -1,7 +1,7 @@
 'use strict';
 
 const expect = require('chai').expect;
-const fstree = require('../../lib/index');
+const fstree = require('../lib/index');
 const context = describe;
 
 const helpers = require('./helpers');
