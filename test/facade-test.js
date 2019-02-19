@@ -1732,6 +1732,52 @@ describe('fsFacade', function() {
       });
     });
 
+    describe('.removeSync()', function() {
+      it('can remove a file', function() {
+        expect(tree.existsSync('hello.txt')).to.be.true;
+
+        tree.removeSync('hello.txt');
+
+        expect(tree.existsSync('hello.txt')).to.be.false;
+      });
+
+      it('can remove a file inside a directory', function() {
+        expect(tree.existsSync('my-directory/subdir/baz.js')).to.be.true;
+
+        tree.removeSync('my-directory/subdir/baz.js');
+
+        expect(tree.existsSync('my-directory/subdir/baz.js')).to.be.false;
+      });
+
+      it('can remove an empty directory', function() {
+        expect(tree.existsSync('empty')).to.be.true;
+
+        tree.removeSync('empty');
+
+        expect(tree.existsSync('empty')).to.be.false;
+      });
+
+      it('can remove a non-empty directory', function() {
+        expect(tree.existsSync('my-directory/subdir')).to.be.true;
+
+        tree.removeSync('my-directory/subdir');
+
+        expect(tree.existsSync('my-directory/subdir')).to.be.false;
+      });
+
+      it('can remove a directory containing non-empty directories', function() {
+        expect(tree.existsSync('my-directory')).to.be.true;
+
+        tree.removeSync('my-directory');
+
+        expect(tree.existsSync('my-directory')).to.be.false;
+      });
+
+      it('throws when removing a non-existent path', function() {
+        expect(() => tree.removeSync('does-not-exist')).to.throw(/\bENOENT\b/);
+      });
+    });
+
     describe('.rmdirSync()', function() {
       defineCommonWriteTests((tree, path_) => {
         tree.rmdirSync(path_);
